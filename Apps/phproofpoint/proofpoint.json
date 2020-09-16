@@ -6,7 +6,7 @@
     "publisher": "Splunk",
     "main_module": "proofpoint_connector.pyc",
     "app_version": "1.2.19",
-    "utctime_updated": "2019-03-25T22:17:43.000000Z",
+    "utctime_updated": "2020-09-16T15:16:45.000000Z",
     "package_name": "phantom_proofpoint",
     "product_vendor": "phantom_proofpoint",
     "product_name": "Targeted Attack Protection",
@@ -14,7 +14,8 @@
     "min_phantom_version": "4.0.1068",
     "logo": "logo_proofpoint.svg",
     "logo_dark": "logo_proofpoint_dark.svg",
-    "license": "Copyright (c) 2017-2019 Splunk Inc.",
+    "license": "Copyright (c) 2017-2020 Splunk Inc.",
+    "python_version": "2.7",
     "configuration": {
         "username": {
             "data_type": "string",
@@ -853,6 +854,115 @@
                 {
                     "data_path": "action_result.data.*.reports.*.forensics.*.what.httpStatus",
                     "data_type": "string"
+                }
+            ],
+            "versions": "EQ(*)"
+        },
+        {
+            "action": "decode url",
+            "description": "Decode URL from URL Defense",
+            "type": "generic",
+            "identifier": "decode_url",
+            "read_only": true,
+            "parameters": {
+                "encoded_url": {
+                    "data_type": "string",
+                    "description": "URL Defense encoded URL",
+                    "required": true,
+                    "contains": [
+                        "url"
+                    ],
+                    "primary": true,
+                    "order": 0
+                }
+            },
+            "render": {
+                "width": 12,
+                "title": "Decode URL",
+                "type": "table",
+                "height": 5
+            },
+            "output": [
+                {
+                    "data_path": "action_result.parameter.encoded_url",
+                    "data_type": "string",
+                    "contains": [
+                        "url"
+                    ]
+                },
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.summary",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.encodedUrl",
+                    "data_type": "string",
+                    "contains": [
+                        "url"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.decodedUrl",
+                    "data_type": "string",
+                    "contains": [
+                        "url"
+                    ],
+                    "column_name": "Decoded URL",
+                    "column_order": 0
+                },
+                {
+                    "data_path": "action_result.data.*.success",
+                    "data_type": "boolean"
+                },
+                {
+                    "data_path": "action_result.data.*.error",
+                    "data_type": "string",
+                    "column_name": "Error",
+                    "column_order": 1
+                },
+                {
+                    "data_path": "action_result.data.*.messageGuid",
+                    "data_type": "string",
+                    "contains": [
+                        "proofpoint message guid"
+                    ],
+                    "column_name": "Message GUID",
+                    "column_order": 2
+                },
+                {
+                    "data_path": "action_result.data.*.clusterName",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.recipientEmail",
+                    "data_type": "string",
+                    "contains": [
+                        "email"
+                    ],
+                    "column_name": "Recipient Email",
+                    "column_order": 3
                 }
             ],
             "versions": "EQ(*)"

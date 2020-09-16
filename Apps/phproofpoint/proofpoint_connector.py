@@ -1,4 +1,5 @@
-# Copyright (c) 2017-2019 Splunk Inc.
+# File: proofpoint_connector.py
+# Copyright (c) 2017-2020 Splunk Inc.
 #
 # Licensed under Apache 2.0 (https://www.apache.org/licenses/LICENSE-2.0.txt)
 #
@@ -23,6 +24,7 @@ PP_API_PATH_ISSUES = '/v2/siem/issues'
 PP_API_PATH_ALL = '/v2/siem/all'
 PP_API_PATH_CAMPAIGN = '/v2/campaign/{}'
 PP_API_PATH_FORENSICS = '/v2/forensics'
+PP_API_PATH_URL_DECODE = '/v2/url/decode'
 
 
 class ProofpointConnector(BaseConnector):
@@ -42,7 +44,7 @@ class ProofpointConnector(BaseConnector):
         self.save_state(self._state)
         return phantom.APP_SUCCESS
 
-    def _make_rest_call(self, action_result, endpoint, params=None):
+    def _make_rest_call(self, action_result, endpoint, params=None, data=None, method='get'):
         config = self.get_config()
         user = config['username'].encode('utf-8')
         password = config['password']
@@ -50,12 +52,18 @@ class ProofpointConnector(BaseConnector):
         if not params:
             params = {}
         params['format'] = 'json'
+        if not data:
+            data = {}
 
         try:
-            res = requests.get(url, params=params, auth=(user, password))
-            res.raise_for_status()
+            if method == 'post':
+                res = requests.post(url, auth=(user, password), json=data)
+                res.raise_for_status()
+            else:
+                res = requests.get(url, params=params, auth=(user, password))
+                res.raise_for_status()
         except requests.exceptions.HTTPError:
-            # a status code outside of the 200s occured
+            # a status code outside of the 200s occurred
             res_text = res.text.replace('{', '{{').replace('}', '}}')
             message = ('Error response from server. Status code: {0}'
                        'Response: {1}').format(res.status_code, res_text)
@@ -269,8 +277,7 @@ class ProofpointConnector(BaseConnector):
         start_at = ((datetime.utcnow() - timedelta(minutes=mins))
                     .replace(microsecond=0).isoformat() + 'Z')
 
-        if (not self._state or 'last_poll' not in self._state or
-                self._state['last_poll'] < start_at):
+        if (not self._state or 'last_poll' not in self._state or self._state['last_poll'] < start_at):
             self._state['last_poll'] = start_at
 
         params = {
@@ -294,8 +301,7 @@ class ProofpointConnector(BaseConnector):
             self.save_progress('Processing {} blocked clicks'
                                .format(len(data['clicksBlocked'])))
             self._process_clicks(data['clicksBlocked'], 'blocked')
-        if (config.get('ingest_delivered_messages') and
-                'messagesDelivered' in data):
+        if (config.get('ingest_delivered_messages') and 'messagesDelivered' in data):
             self.save_progress('Processing {} delivered messages'
                                .format(len(data['messagesDelivered'])))
             self._process_messages(data['messagesDelivered'], 'delivered')
@@ -371,6 +377,33 @@ class ProofpointConnector(BaseConnector):
         action_result.add_data(data)
         return action_result.set_status(phantom.APP_SUCCESS)
 
+    def decode_url(self, param):
+        """ Decode a URL that has been rewritten by Proofpoint URL Defense
+
+        Args:
+            param (dict): Parameters including URL to decode
+
+        Returns:
+            a status code
+
+        """
+        action_result = self.add_action_result(ActionResult(param))
+
+        encoded_url = param['encoded_url']
+
+        ret_val, data = self._make_rest_call(
+            action_result,
+            PP_API_PATH_URL_DECODE,
+            data={'urls': [encoded_url]},
+            method='post'
+        )
+        if phantom.is_fail(ret_val):
+            return action_result.get_status()
+
+        action_result.add_data(data.get('urls')[0])
+
+        return action_result.set_status(phantom.APP_SUCCESS, 'Successfully decoded URL')
+
     def handle_action(self, param):
         """Function that handles all the actions
 
@@ -391,4 +424,73 @@ class ProofpointConnector(BaseConnector):
             result = self.get_campaign_details(param)
         elif ((action == 'get_forensic_data') or (action == 'get_forensic')):
             result = self.get_forensic_data(param)
+        elif action == 'decode_url':
+            result = self.decode_url(param)
+
         return result
+
+
+if __name__ == '__main__':
+
+    import pudb
+    import json
+    import argparse
+
+    pudb.set_trace()
+
+    argparser = argparse.ArgumentParser()
+
+    argparser.add_argument('input_test_json', help='Input Test JSON file')
+    argparser.add_argument('-u', '--username', help='username', required=False)
+    argparser.add_argument('-p', '--password', help='password', required=False)
+
+    args = argparser.parse_args()
+    session_id = None
+
+    username = args.username
+    password = args.password
+
+    if (username is not None and password is None):
+
+        # User specified a username but not a password, so ask
+        import getpass
+        password = getpass.getpass("Password: ")
+
+    if (username and password):
+        try:
+            print ("Accessing the Login page")
+            r = requests.get(BaseConnector._get_phantom_base_url() + "login", verify=False)
+            csrftoken = r.cookies['csrftoken']
+
+            data = dict()
+            data['username'] = username
+            data['password'] = password
+            data['csrfmiddlewaretoken'] = csrftoken
+
+            headers = dict()
+            headers['Cookie'] = 'csrftoken=' + csrftoken
+            headers['Referer'] = BaseConnector._get_phantom_base_url() + 'login'
+
+            print ("Logging into Platform to get the session id")
+            r2 = requests.post(BaseConnector._get_phantom_base_url() + "login", verify=False, data=data, headers=headers)
+            session_id = r2.cookies['sessionid']
+        except Exception as e:
+            print ("Unable to get session id from the platfrom. Error: " + str(e))
+            exit(1)
+
+    with open(args.input_test_json) as f:
+        in_json = f.read()
+        in_json = json.loads(in_json)
+        print(json.dumps(in_json, indent=4))
+
+        connector = ProofpointConnector()
+        connector.print_progress_message = True
+
+        if (session_id is not None):
+            in_json['user_session_token'] = session_id
+            connector._set_csrf_info(csrftoken, headers['Referer'])
+
+        ret_val = connector._handle_action(json.dumps(in_json), None)
+        print(json.dumps(json.loads(ret_val), indent=4))
+
+    exit(0)
